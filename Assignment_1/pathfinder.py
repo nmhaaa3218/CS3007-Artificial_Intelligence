@@ -10,26 +10,20 @@ import sys
 import argparse
 import os
 import math
+import random
 
 class Solution:
     def __init__(self, path, visit_count_grid, first_visit, last_visit):
-        self.path = path 
-        self.visit_count_grid = visit_count_grid 
-        self.first_visit = first_visit
-        self.last_visit = last_visit
+        self.path = path # list of actions ex: ['up', 'down', 'left', 'right']
+        self.visit_count_grid = visit_count_grid # same as input grid but with number of visits
+        self.first_visit = first_visit # same as input grid but with turn of first visit
+        self.last_visit = last_visit # same as input grid but with turn of last visit
         
 class Node:
-    def __init__(self, state, parent, action, height, path_cost, depth, number_of_visits, first_visit, last_visit):
+    def __init__(self, state, parent, action):
         self.state = state
         self.parent = parent
         self.action = action
-        self.height = height
-        self.path_cost = path_cost
-        self.depth = depth
-        self.number_of_visits = number_of_visits
-        self.first_visit = first_visit
-        self.last_visit = last_visit
-        
         
 # Formulalize the problem
 class Problem:
@@ -41,28 +35,35 @@ class Problem:
     def check_completeness(self, current_coordinate):
         return current_coordinate == self.target_coordinate
 
-    def actions(self, current_coordinate):
+    def actions(self, current_coordinate, randomized=True):
         available_actions = []
         if current_coordinate == self.target_coordinate:
             return []
         else:
             # check up down left right with boundary checks
-            if current_coordinate[0] > 0 and self.grid[current_coordinate[0] - 1][current_coordinate[1]] != 'X':
+            if current_coordinate[1] > 0 and self.grid[current_coordinate[0]][current_coordinate[1]-1] != 'X':
                 available_actions.append('left')
-            if current_coordinate[0] < len(self.grid) - 1 and self.grid[current_coordinate[0] + 1][current_coordinate[1]] != 'X':
+            if current_coordinate[1] < len(self.grid) - 1 and self.grid[current_coordinate[0]][current_coordinate[1]+1] != 'X':
                 available_actions.append('right')
-            if current_coordinate[1] > 0 and self.grid[current_coordinate[0]][current_coordinate[1] - 1] != 'X':
+            if current_coordinate[0] > 0 and self.grid[current_coordinate[0]-1][current_coordinate[1]] != 'X':
                 available_actions.append('up')
-            if current_coordinate[1] < len(self.grid[0]) - 1 and self.grid[current_coordinate[0]][current_coordinate[1] + 1] != 'X':
+            if current_coordinate[0] < len(self.grid[0]) - 1 and self.grid[current_coordinate[0]+1][current_coordinate[1]] != 'X':
                 available_actions.append('down')
+                
+            # add randomization since observe that order of actions of final result tends to prefer left -> right -> up -> down 
+            # observe that random sometimes solve in less steps
+            if randomized:
+                random.shuffle(available_actions)
+                
             return available_actions
 
+    # got mixed up between [r,c] and [c,r] 
     def result(self, state, action):
         direction_map = {
-            'left': (-1, 0),
-            'right': (1, 0),
-            'up': (0, -1),
-            'down': (0, 1)
+            'left': (0, -1),
+            'right': (0, 1),
+            'up': (-1, 0),
+            'down': (1, 0)
         }
         delta = direction_map[action]
         return (state[0] + delta[0], state[1] + delta[1])
@@ -84,45 +85,85 @@ def backtracking(node: Node):
     return path
 
 def breadth_first_search(problem: Problem) -> Solution:
-    # initial node queue + closed set
+    # initial node queue 
     node_queue = []
-    initial_node = Node(problem.initial_coordinate, None, None, 0, 0)
+    initial_node = Node(problem.initial_coordinate, None, None)
     node_queue.append(initial_node)
+    
+    # initial closed set for visited nodes
     closed_set = set()
     
-    # initialize result grids
+    # step counter
+    step_counter = 0
+    
+    # initialize result grids - have the same structure as the input grid
     visit_count_grid = []
     first_visit_grid = []
     last_visit_grid = []
     rows = len(problem.grid)
     cols = len(problem.grid[0])
     for i in range(rows):
-        row = []
+        visit_count_row = []
+        first_visit_row = []
+        last_visit_row = []
         for j in range(cols):
             if problem.grid[i][j] == "X":
-                row.append("X")
+                visit_count_row.append("X")
+                first_visit_row.append("X") 
+                last_visit_row.append("X")
             else:
-                row.append(0)
-        visit_count_grid.append(row)
-        first_visit_grid.append(row)
-        last_visit_grid.append(row)
-            
+                visit_count_row.append(0)
+                first_visit_row.append(0)
+                last_visit_row.append(0)
+        visit_count_grid.append(visit_count_row)
+        first_visit_grid.append(first_visit_row)
+        last_visit_grid.append(last_visit_row)
+        
+    # begin searching        
     while node_queue:
-        current_node = node_queue.pop(0)
-        current_coordinate = current_node.state
+        current_node = node_queue.pop(0) # get the first node in the queue
+        current_coordinate = current_node.state # get current coordinate
+        step_counter += 1 # update step counter for each loop
         
+        # check if not obstacle
+        if problem.grid[current_coordinate[0]][current_coordinate[1]] != "X":
+            # update visit count
+            visit_count_grid[current_coordinate[0]][current_coordinate[1]] += 1
+            
+            # check if first visit
+            if first_visit_grid[current_coordinate[0]][current_coordinate[1]] == 0:
+                # update first visit
+                first_visit_grid[current_coordinate[0]][current_coordinate[1]] = step_counter
+                
+            # update last visit
+            last_visit_grid[current_coordinate[0]][current_coordinate[1]] = step_counter
+            
+        # DEBUG
+        # print("Step: ", step_counter)     
+        # print("Current Coordinate: ", current_coordinate)
+        
+        # check if target is reached
         if problem.check_completeness(current_coordinate):
-            return backtracking(current_node)
+            path = backtracking(current_node)
+            # print(path)
+            return Solution(path, visit_count_grid, first_visit_grid, last_visit_grid)
         
+        # check if current coordinate is not in closed set
         if current_coordinate not in closed_set:
+            # add current coordinate to closed set
             closed_set.add(current_coordinate)
+            
+            # explore all possible actions from current coordinate
             for action in problem.actions(current_coordinate):
+                # get next coordinate
                 next_coordinate = problem.result(current_coordinate, action)
-                path_cost = current_node.path_cost + problem.step_cost(current_coordinate, next_coordinate)
-                next_node = Node(next_coordinate, current_node, action, path_cost, current_node.depth + 1)
+                # craete a new node
+                next_node = Node(next_coordinate, current_node, action)
+                # add new node to the queue
                 node_queue.append(next_node)
     
-    return None
+    # return None if no solution 
+    return Solution([], visit_count_grid, first_visit_grid, last_visit_grid)
 
 
 def uniform_cost_search(problem: Problem) -> Solution:
@@ -132,7 +173,7 @@ def uniform_cost_search(problem: Problem) -> Solution:
     """
     return None
 
-def a_star_search(problem: Problem, heuristic: function) -> Solution:
+def a_star_search(problem: Problem, heuristic) -> Solution:
     """
     A* Search algorithm.
     Use a priority queue where priority = path_cost + heuristic.
@@ -170,6 +211,12 @@ def read_map(file_path: str):
     target_row = int(target[0])
     target_col = int(target[1])
     
+    # Transform coordinate to 0-based
+    start_row -= 1
+    start_col -= 1
+    target_row -= 1
+    target_col -= 1
+    
     # Read the map
     grid = []
     for line in lines[3:]:
@@ -186,6 +233,10 @@ def format_release_output(problem: Problem, solution: Solution):
     steps = solution.path
     curr_row = initial_coordinate[0]
     curr_col = initial_coordinate[1]
+    
+    # check if steps is empty
+    if not steps:
+        return "no solution"
     
     # mark the start and target
     solution_grid[initial_coordinate[0]][initial_coordinate[1]] = '*'
@@ -210,7 +261,19 @@ def format_release_output(problem: Problem, solution: Solution):
 
 def format_debug_output(problem: Problem, solution: Solution):
     formatted_solution = format_release_output(problem, solution)
-    return formatted_solution, solution.visits_grid, solution.first_visit, solution.last_visit
+    visit_count_grid = solution.visit_count_grid
+    first_visit = solution.first_visit
+    last_visit = solution.last_visit
+    
+    # change never visit cell to "."
+    for i in range(len(visit_count_grid)):
+        for j in range(len(visit_count_grid[0])):
+            if visit_count_grid[i][j] == 0:
+                visit_count_grid[i][j] = "."
+                first_visit[i][j] = "."
+                last_visit[i][j] = "."
+    
+    return formatted_solution, visit_count_grid, first_visit, last_visit
             
 
 # MAIN FUNCTION
@@ -223,7 +286,8 @@ def main():
     args = parser.parse_args()
 
     # Read the map file and create the Problem instance
-    problem = read_map(args.map)
+    # problem = read_map(args.map)
+    problem = read_map("sample.txt")
     if problem is None:
         print("Error reading map file.")
         sys.exit(1)
@@ -248,9 +312,29 @@ def main():
 
     # MUST BE ABLE TO HANDLE WHEN NO SOLUTION IS FOUND
     if args.mode == "debug":
-        format_debug_output(problem, solution)
+        formatted_solution, visit_count_grid, first_visit, last_visit = format_debug_output(problem, solution)
+        print("path:")
+        if formatted_solution == "no solution":
+            print("no solution")
+        else:
+            for row in formatted_solution:
+                print(" ".join(row))
+        print("#visits: ")
+        for row in visit_count_grid:
+            print(" ".join([str(x) for x in row]))
+        print("first visit: ")
+        for row in first_visit:
+            print(" ".join([str(x) for x in row]))
+        print("last visit: ")
+        for row in last_visit:
+            print(" ".join([str(x) for x in row]))
     else:
-        format_release_output(problem, solution)
+        formatted_solution = format_release_output(problem, solution)
+        if formatted_solution == "no solution":
+            print("no solution")
+        else:
+            for row in formatted_solution:
+                print(" ".join(row))
 
 
 if __name__ == "__main__":
