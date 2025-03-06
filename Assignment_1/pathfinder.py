@@ -20,10 +20,11 @@ class Solution:
         self.last_visit = last_visit # same as input grid but with turn of last visit
         
 class Node:
-    def __init__(self, state, parent, action):
+    def __init__(self, state, parent, action, cost=0):
         self.state = state
         self.parent = parent
         self.action = action
+        self.cost = cost # for UCS and A* search, default as 0 for BFS to not throw error
         
 # Formulalize the problem
 class Problem:
@@ -165,13 +166,100 @@ def breadth_first_search(problem: Problem) -> Solution:
     # return None if no solution 
     return Solution([], visit_count_grid, first_visit_grid, last_visit_grid)
 
-
+# the more you know, it's Djiikstra on steroid =)))))))) (if you are reading this, you are a legend)
 def uniform_cost_search(problem: Problem) -> Solution:
-    """
-    Uniform Cost Search algorithm.
-    Use a priority queue keyed on path_cost.
-    """
-    return None
+    # initial node queue 
+    node_queue = []
+    initial_node = Node(problem.initial_coordinate, None, None)
+    node_queue.append(initial_node)
+    
+    # initial closed set for visited nodes
+    closed_set = set()
+    
+    # step counter
+    step_counter = 0
+    
+    # initialize result grids - have the same structure as the input grid
+    visit_count_grid = []
+    first_visit_grid = []
+    last_visit_grid = []
+    rows = len(problem.grid)
+    cols = len(problem.grid[0])
+    for i in range(rows):
+        visit_count_row = []
+        first_visit_row = []
+        last_visit_row = []
+        for j in range(cols):
+            if problem.grid[i][j] == "X":
+                visit_count_row.append("X")
+                first_visit_row.append("X") 
+                last_visit_row.append("X")
+            else:
+                visit_count_row.append(0)
+                first_visit_row.append(0)
+                last_visit_row.append(0)
+        visit_count_grid.append(visit_count_row)
+        first_visit_grid.append(first_visit_row)
+        last_visit_grid.append(last_visit_row)
+    
+    # begin searching        
+    while node_queue:
+        current_node = node_queue.pop(0) # get the first node in the queue
+        current_coordinate = current_node.state # get current coordinate
+        step_counter += 1 # update step counter for each loop
+        
+        # check if not obstacle
+        if problem.grid[current_coordinate[0]][current_coordinate[1]] != "X":
+            # update visit count
+            visit_count_grid[current_coordinate[0]][current_coordinate[1]] += 1
+            
+            # check if first visit
+            if first_visit_grid[current_coordinate[0]][current_coordinate[1]] == 0:
+                # update first visit
+                first_visit_grid[current_coordinate[0]][current_coordinate[1]] = step_counter
+                
+            # update last visit
+            last_visit_grid[current_coordinate[0]][current_coordinate[1]] = step_counter
+            
+        # DEBUG
+        # print("Step: ", step_counter)     
+        # print("Current Coordinate: ", current_coordinate)
+        
+        # check if target is reached
+        if problem.check_completeness(current_coordinate):
+            path = backtracking(current_node)
+            # print(path)
+            return Solution(path, visit_count_grid, first_visit_grid, last_visit_grid)
+        
+        # check if current coordinate is not in closed set
+        if current_coordinate not in closed_set:
+            # add current coordinate to closed set
+            closed_set.add(current_coordinate)
+            
+            # explore all possible actions from current coordinate
+            for action in problem.actions(current_coordinate):
+                # get next coordinate
+                next_coordinate = problem.result(current_coordinate, action)
+                
+                # calculate the cost
+                cost = problem.step_cost(current_coordinate, next_coordinate)
+                
+                # craete a new node
+                next_node = Node(next_coordinate, current_node, action, cost)
+                
+                # add new node to the queue
+                node_queue.append(next_node)
+                
+                # sort the queue based on the cost
+                node_queue = sorted(node_queue, key=lambda x: x.cost)
+                
+                # DEBUG
+                # print("Next Coordinate: ", next_coordinate)
+                # print("Cost: ", cost)
+                
+    # return None if no solution 
+    return Solution([], visit_count_grid, first_visit_grid, last_visit_grid)
+    
 
 def a_star_search(problem: Problem, heuristic) -> Solution:
     """
@@ -230,6 +318,7 @@ def format_release_output(problem: Problem, solution: Solution):
     initial_coordinate = problem.initial_coordinate
     target_coordinate = problem.target_coordinate
     
+    cumulative_cost = 0
     steps = solution.path
     curr_row = initial_coordinate[0]
     curr_col = initial_coordinate[1]
