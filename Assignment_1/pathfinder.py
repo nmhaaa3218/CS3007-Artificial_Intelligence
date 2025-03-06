@@ -262,11 +262,99 @@ def uniform_cost_search(problem: Problem) -> Solution:
     
 
 def a_star_search(problem: Problem, heuristic) -> Solution:
-    """
-    A* Search algorithm.
-    Use a priority queue where priority = path_cost + heuristic.
-    """
-    return None
+    # initial node queue
+    node_queue = []
+    initial_node = Node(problem.initial_coordinate, None, None)
+    node_queue.append(initial_node)
+    
+    # initial closed set for visited nodes
+    closed_set = set()
+    
+    # step counter
+    step_counter = 0
+    
+    # initialize result grids - have the same structure as the input grid
+    visit_count_grid = []
+    first_visit_grid = []
+    last_visit_grid = []
+    rows = len(problem.grid)
+    cols = len(problem.grid[0])
+    for i in range(rows):
+        visit_count_row = []
+        first_visit_row = []
+        last_visit_row = []
+        for j in range(cols):
+            if problem.grid[i][j] == "X":
+                visit_count_row.append("X")
+                first_visit_row.append("X") 
+                last_visit_row.append("X")
+            else:
+                visit_count_row.append(0)
+                first_visit_row.append(0)
+                last_visit_row.append(0)
+        visit_count_grid.append(visit_count_row)
+        first_visit_grid.append(first_visit_row)
+        last_visit_grid.append(last_visit_row)
+    
+    # begin searching        
+    while node_queue:
+        current_node = node_queue.pop(0) # get the first node in the queue
+        current_coordinate = current_node.state # get current coordinate
+        step_counter += 1 # update step counter for each loop
+        
+        # check if not obstacle
+        if problem.grid[current_coordinate[0]][current_coordinate[1]] != "X":
+            # update visit count
+            visit_count_grid[current_coordinate[0]][current_coordinate[1]] += 1
+            
+            # check if first visit
+            if first_visit_grid[current_coordinate[0]][current_coordinate[1]] == 0:
+                # update first visit
+                first_visit_grid[current_coordinate[0]][current_coordinate[1]] = step_counter
+                
+            # update last visit
+            last_visit_grid[current_coordinate[0]][current_coordinate[1]] = step_counter
+            
+        # DEBUG
+        # print("Step: ", step_counter)     
+        # print("Current Coordinate: ", current_coordinate)
+        
+        # check if target is reached
+        if problem.check_completeness(current_coordinate):
+            path = backtracking(current_node)
+            # print(path)
+            return Solution(path, visit_count_grid, first_visit_grid, last_visit_grid)
+        
+        # check if current coordinate is not in closed set
+        if current_coordinate not in closed_set:
+            # add current coordinate to closed set
+            closed_set.add(current_coordinate)
+            
+            # explore all possible actions from current coordinate
+            for action in problem.actions(current_coordinate):
+                # get next coordinate
+                next_coordinate = problem.result(current_coordinate, action)
+                
+                # calculate the cost
+                step_cost = problem.step_cost(current_coordinate, next_coordinate)
+                heuristic_cost = heuristic(next_coordinate, problem.target_coordinate)
+                cost = step_cost + heuristic_cost
+                
+                # craete a new node
+                next_node = Node(next_coordinate, current_node, action, cost)
+                
+                # add new node to the queue
+                node_queue.append(next_node)
+                
+                # sort the queue based on the cost
+                node_queue = sorted(node_queue, key=lambda x: x.cost)
+                
+                # DEBUG
+                # print("Next Coordinate: ", next_coordinate)
+                # print("Cost: ", cost)
+                
+    # return None if no solution 
+    return Solution([], visit_count_grid, first_visit_grid, last_visit_grid)
 
 # CALCULATE DISTANCE 
 def l2_distance(current_coor, target_coor):
@@ -313,12 +401,20 @@ def read_map(file_path: str):
     return Problem((start_row, start_col), (target_row, target_col), grid)
 
 # OUTPUT FUNCTIONS
+def calculate_path_cost(problem: Problem, path: list):
+    cost = 0
+    current_coordinate = problem.initial_coordinate
+    for action in path:
+        next_coordinate = problem.result(current_coordinate, action)
+        cost += problem.step_cost(current_coordinate, next_coordinate)
+        current_coordinate = next_coordinate
+    return cost
+
 def format_release_output(problem: Problem, solution: Solution):
     solution_grid = problem.grid
     initial_coordinate = problem.initial_coordinate
     target_coordinate = problem.target_coordinate
     
-    cumulative_cost = 0
     steps = solution.path
     curr_row = initial_coordinate[0]
     curr_col = initial_coordinate[1]
@@ -368,10 +464,10 @@ def format_debug_output(problem: Problem, solution: Solution):
 # MAIN FUNCTION
 def main():
     parser = argparse.ArgumentParser(description="Pathfinding using BFS, UCS, or A*")
-    parser.add_argument("mode", choices=["debug", "release"], help="Mode: debug or release")
+    parser.add_argument("mode", choices=["debug", "release"])
     parser.add_argument("map", help="Path to map file")
-    parser.add_argument("algorithm", choices=["bfs", "ucs", "astar"], help="Algorithm to use")
-    parser.add_argument("heuristic", nargs="?", default=None, choices=["euclidean", "manhattan"], help="Heuristic for A* (ignored for BFS and UCS)")
+    parser.add_argument("algorithm", choices=["bfs", "ucs", "astar"])
+    parser.add_argument("heuristic", nargs="?", default=None, choices=["euclidean", "manhattan"])
     args = parser.parse_args()
 
     # Read the map file and create the Problem instance
@@ -400,6 +496,7 @@ def main():
         sys.exit(1)
 
     # MUST BE ABLE TO HANDLE WHEN NO SOLUTION IS FOUND
+    print("Total cost: ", calculate_path_cost(problem, solution.path)) # FOR CURIOUSITY PURPOSES
     if args.mode == "debug":
         formatted_solution, visit_count_grid, first_visit, last_visit = format_debug_output(problem, solution)
         print("path:")
