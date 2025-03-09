@@ -1,6 +1,6 @@
 # Assignment 1: Search Algorithms
 # Author: Manh Ha Nguyen - a1840406 - University of Adelaide
-# Date: 4-Mar-2025
+# Date started: 4-Mar-2025
 #============================================================#
 
 STUDENT_ID = 'a1840406' 
@@ -11,6 +11,7 @@ import argparse
 import os
 import math
 import random
+import heapq
 
 class Solution:
     def __init__(self, path, visit_count_grid, first_visit, last_visit):
@@ -25,6 +26,10 @@ class Node:
         self.parent = parent
         self.action = action
         self.cost = cost # for UCS and A* search, default as 0 for BFS to not throw error
+        
+    # less than operator for priority queue    
+    def __lt__(self, other):
+        return self.cost < other.cost
         
 # Formulalize the problem
 class Problem:
@@ -171,7 +176,7 @@ def uniform_cost_search(problem: Problem) -> Solution:
     # initial node queue 
     node_queue = []
     initial_node = Node(problem.initial_coordinate, None, None)
-    node_queue.append(initial_node)
+    heapq.heappush(node_queue, initial_node)
     
     # initial closed set for visited nodes
     closed_set = set()
@@ -204,7 +209,7 @@ def uniform_cost_search(problem: Problem) -> Solution:
     
     # begin searching        
     while node_queue:
-        current_node = node_queue.pop(0) # get the first node in the queue
+        current_node = heapq.heappop(node_queue)
         current_coordinate = current_node.state # get current coordinate
         step_counter += 1 # update step counter for each loop
         
@@ -242,16 +247,15 @@ def uniform_cost_search(problem: Problem) -> Solution:
                 next_coordinate = problem.result(current_coordinate, action)
                 
                 # calculate the cost
-                cost = problem.step_cost(current_coordinate, next_coordinate)
+                step_cost = problem.step_cost(current_coordinate, next_coordinate) # Apparently we kinda need to accumulate the cost
+                current_cost = current_node.cost
+                cost = current_cost + step_cost
                 
                 # craete a new node
                 next_node = Node(next_coordinate, current_node, action, cost)
                 
                 # add new node to the queue
-                node_queue.append(next_node)
-                
-                # sort the queue based on the cost
-                node_queue = sorted(node_queue, key=lambda x: x.cost)
+                heapq.heappush(node_queue, next_node)
                 
                 # DEBUG
                 # print("Next Coordinate: ", next_coordinate)
@@ -265,7 +269,7 @@ def a_star_search(problem: Problem, heuristic) -> Solution:
     # initial node queue
     node_queue = []
     initial_node = Node(problem.initial_coordinate, None, None)
-    node_queue.append(initial_node)
+    heapq.heappush(node_queue, initial_node)
     
     # initial closed set for visited nodes
     closed_set = set()
@@ -298,7 +302,7 @@ def a_star_search(problem: Problem, heuristic) -> Solution:
     
     # begin searching        
     while node_queue:
-        current_node = node_queue.pop(0) # get the first node in the queue
+        current_node = heapq.heappop(node_queue)
         current_coordinate = current_node.state # get current coordinate
         step_counter += 1 # update step counter for each loop
         
@@ -338,17 +342,15 @@ def a_star_search(problem: Problem, heuristic) -> Solution:
                 # calculate the cost
                 step_cost = problem.step_cost(current_coordinate, next_coordinate)
                 heuristic_cost = heuristic(next_coordinate, problem.target_coordinate)
-                cost = step_cost + heuristic_cost
+                current_cost = current_node.cost
+                cost = step_cost + heuristic_cost + current_cost
                 
                 # craete a new node
                 next_node = Node(next_coordinate, current_node, action, cost)
                 
                 # add new node to the queue
-                node_queue.append(next_node)
-                
-                # sort the queue based on the cost
-                node_queue = sorted(node_queue, key=lambda x: x.cost)
-                
+                heapq.heappush(node_queue, next_node)
+
                 # DEBUG
                 # print("Next Coordinate: ", next_coordinate)
                 # print("Cost: ", cost)
