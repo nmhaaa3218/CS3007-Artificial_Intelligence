@@ -41,35 +41,30 @@ class Problem:
     def check_completeness(self, current_coordinate):
         return current_coordinate == self.target_coordinate
 
-    def actions(self, current_coordinate, randomized=True):
+    def actions(self, current_coordinate, randomized=False):
         available_actions = []
         if current_coordinate == self.target_coordinate:
             return []
         else:
             # check up down left right with boundary checks
-            if current_coordinate[1] > 0 and self.grid[current_coordinate[0]][current_coordinate[1]-1] != 'X':
-                available_actions.append('left')
-            if current_coordinate[1] < len(self.grid) - 1 and self.grid[current_coordinate[0]][current_coordinate[1]+1] != 'X':
-                available_actions.append('right')
             if current_coordinate[0] > 0 and self.grid[current_coordinate[0]-1][current_coordinate[1]] != 'X':
                 available_actions.append('up')
-            if current_coordinate[0] < len(self.grid[0]) - 1 and self.grid[current_coordinate[0]+1][current_coordinate[1]] != 'X':
+            if current_coordinate[0] < len(self.grid) - 1 and self.grid[current_coordinate[0]+1][current_coordinate[1]] != 'X':
                 available_actions.append('down')
-                
-            # add randomization since observe that order of actions of final result tends to prefer left -> right -> up -> down 
-            # observe that random sometimes solve in less steps
-            if randomized:
-                random.shuffle(available_actions)
+            if current_coordinate[1] > 0 and self.grid[current_coordinate[0]][current_coordinate[1]-1] != 'X':
+                available_actions.append('left')
+            if current_coordinate[1] < len(self.grid[0]) - 1 and self.grid[current_coordinate[0]][current_coordinate[1]+1] != 'X':
+                available_actions.append('right')
                 
             return available_actions
 
     # got mixed up between [r,c] and [c,r] 
     def result(self, state, action):
         direction_map = {
-            'left': (0, -1),
-            'right': (0, 1),
             'up': (-1, 0),
-            'down': (1, 0)
+            'down': (1, 0), 
+            'left': (0, -1),
+            'right': (0, 1)
         }
         delta = direction_map[action]
         return (state[0] + delta[0], state[1] + delta[1])
@@ -171,18 +166,16 @@ def breadth_first_search(problem: Problem) -> Solution:
     # return None if no solution 
     return Solution([], visit_count_grid, first_visit_grid, last_visit_grid)
 
-# the more you know, it's Djiikstra on steroid =)))))))) (if you are reading this, you are a legend)
+# the more you know, it's Dijkstra on steroid =)))))))) (if you are reading this, you are a legend)
 def uniform_cost_search(problem: Problem) -> Solution:
     # initial node queue 
     node_queue = []
-    initial_node = Node(problem.initial_coordinate, None, None)
-    heapq.heappush(node_queue, initial_node)
+    initial_node = Node(problem.initial_coordinate, None, None, 0)  # Initialize cost to 0
+    heapq.heappush(node_queue, (0, -problem.initial_coordinate[0], -problem.initial_coordinate[1], initial_node))
     
-    # initial closed set for visited nodes
-    closed_set = set()
-    
-    # step counter
-    step_counter = 0
+    closed_set = set() # visited nodes
+    g_costs = {problem.initial_coordinate: 0}  # dict for min path costs
+    step_counter = 0 # step count 
     
     # initialize result grids - have the same structure as the input grid
     visit_count_grid = []
@@ -207,75 +200,54 @@ def uniform_cost_search(problem: Problem) -> Solution:
         first_visit_grid.append(first_visit_row)
         last_visit_grid.append(last_visit_row)
     
-    # begin searching        
     while node_queue:
-        current_node = heapq.heappop(node_queue)
-        current_coordinate = current_node.state # get current coordinate
-        step_counter += 1 # update step counter for each loop
+        # get the node with the lowest cost
+        current_cost, neg_row, neg_col, current_node = heapq.heappop(node_queue)
+        current_coordinate = current_node.state
+        step_counter += 1
         
         # check if not obstacle
         if problem.grid[current_coordinate[0]][current_coordinate[1]] != "X":
-            # update visit count
-            visit_count_grid[current_coordinate[0]][current_coordinate[1]] += 1
-            
-            # check if first visit
+            visit_count_grid[current_coordinate[0]][current_coordinate[1]] += 1 # update visit count
             if first_visit_grid[current_coordinate[0]][current_coordinate[1]] == 0:
-                # update first visit
-                first_visit_grid[current_coordinate[0]][current_coordinate[1]] = step_counter
-                
-            # update last visit
-            last_visit_grid[current_coordinate[0]][current_coordinate[1]] = step_counter
+                first_visit_grid[current_coordinate[0]][current_coordinate[1]] = step_counter # update first visit
+            last_visit_grid[current_coordinate[0]][current_coordinate[1]] = step_counter # update last visit
             
-        # DEBUG
-        # print("Step: ", step_counter)     
-        # print("Current Coordinate: ", current_coordinate)
-        
         # check if target is reached
         if problem.check_completeness(current_coordinate):
             path = backtracking(current_node)
-            # print(path)
             return Solution(path, visit_count_grid, first_visit_grid, last_visit_grid)
         
-        # check if current coordinate is not in closed set
-        if current_coordinate not in closed_set:
-            # add current coordinate to closed set
-            closed_set.add(current_coordinate)
-            
-            # explore all possible actions from current coordinate
-            for action in problem.actions(current_coordinate):
-                # get next coordinate
-                next_coordinate = problem.result(current_coordinate, action)
+        # check if visited
+        if current_coordinate in closed_set:
+            continue
+        closed_set.add(current_coordinate)
+        
+        # explore actions from current coordinate
+        for action in problem.actions(current_coordinate):
+            next_coordinate = problem.result(current_coordinate, action)
+            if next_coordinate in closed_set:
+                continue
+            step_cost = problem.step_cost(current_coordinate, next_coordinate)
+            new_cost = current_node.cost + step_cost
+            if next_coordinate not in g_costs or new_cost < g_costs[next_coordinate]:
+                g_costs[next_coordinate] = new_cost
+                next_node = Node(next_coordinate, current_node, action, cost=new_cost)
+                heapq.heappush(node_queue, (new_cost, -next_coordinate[0], -next_coordinate[1], next_node))
                 
-                # calculate the cost
-                step_cost = problem.step_cost(current_coordinate, next_coordinate) # Apparently we kinda need to accumulate the cost
-                current_cost = current_node.cost
-                cost = current_cost + step_cost
-                
-                # craete a new node
-                next_node = Node(next_coordinate, current_node, action, cost)
-                
-                # add new node to the queue
-                heapq.heappush(node_queue, next_node)
-                
-                # DEBUG
-                # print("Next Coordinate: ", next_coordinate)
-                # print("Cost: ", cost)
-                
-    # return None if no solution 
     return Solution([], visit_count_grid, first_visit_grid, last_visit_grid)
     
-
 def a_star_search(problem: Problem, heuristic) -> Solution:
-    # initial node queue
+    # initial node queue with f-score as priority
     node_queue = []
-    initial_node = Node(problem.initial_coordinate, None, None)
-    heapq.heappush(node_queue, initial_node)
+    initial_node = Node(problem.initial_coordinate, None, None, 0)
+    f_score = heuristic(problem.initial_coordinate, problem.target_coordinate)
+    heapq.heappush(node_queue, (f_score, -problem.initial_coordinate[0], -problem.initial_coordinate[1], initial_node))
     
-    # initial closed set for visited nodes
-    closed_set = set()
-    
-    # step counter
-    step_counter = 0
+    closed_set = set() # visited nodes
+    g_costs = {problem.initial_coordinate: 0} # dict for min path costs
+    step_counter = 0 # step count
+
     
     # initialize result grids - have the same structure as the input grid
     visit_count_grid = []
@@ -302,9 +274,9 @@ def a_star_search(problem: Problem, heuristic) -> Solution:
     
     # begin searching        
     while node_queue:
-        current_node = heapq.heappop(node_queue)
-        current_coordinate = current_node.state # get current coordinate
-        step_counter += 1 # update step counter for each loop
+        f_score, neg_row, neg_col, current_node = heapq.heappop(node_queue)
+        current_coordinate = current_node.state
+        step_counter += 1
         
         # check if not obstacle
         if problem.grid[current_coordinate[0]][current_coordinate[1]] != "X":
@@ -319,41 +291,37 @@ def a_star_search(problem: Problem, heuristic) -> Solution:
             # update last visit
             last_visit_grid[current_coordinate[0]][current_coordinate[1]] = step_counter
             
-        # DEBUG
-        # print("Step: ", step_counter)     
-        # print("Current Coordinate: ", current_coordinate)
-        
         # check if target is reached
         if problem.check_completeness(current_coordinate):
             path = backtracking(current_node)
-            # print(path)
             return Solution(path, visit_count_grid, first_visit_grid, last_visit_grid)
         
-        # check if current coordinate is not in closed set
-        if current_coordinate not in closed_set:
-            # add current coordinate to closed set
-            closed_set.add(current_coordinate)
+        # Skip if we've found a better path to this node already
+        if current_coordinate in closed_set:
+            continue
             
-            # explore all possible actions from current coordinate
-            for action in problem.actions(current_coordinate):
-                # get next coordinate
-                next_coordinate = problem.result(current_coordinate, action)
+        # add current coordinate to closed set
+        closed_set.add(current_coordinate)
+        
+        # explore all possible actions from current coordinate
+        for action in problem.actions(current_coordinate):
+            # get next coordinate
+            next_coordinate = problem.result(current_coordinate, action)
+            
+            # skip if already in closed set
+            if next_coordinate in closed_set:
+                continue
                 
-                # calculate the cost
-                step_cost = problem.step_cost(current_coordinate, next_coordinate)
-                heuristic_cost = heuristic(next_coordinate, problem.target_coordinate)
-                current_cost = current_node.cost
-                cost = step_cost + heuristic_cost + current_cost
-                
-                # craete a new node
-                next_node = Node(next_coordinate, current_node, action, cost)
-                
-                # add new node to the queue
-                heapq.heappush(node_queue, next_node)
-
-                # DEBUG
-                # print("Next Coordinate: ", next_coordinate)
-                # print("Cost: ", cost)
+            # calculate g_score (path cost to reach this node)
+            step_cost = problem.step_cost(current_coordinate, next_coordinate)
+            tentative_g_score = current_node.cost + step_cost
+            
+            # only consider this path if it's better than any previous path
+            if next_coordinate not in g_costs or tentative_g_score < g_costs[next_coordinate]:
+                g_costs[next_coordinate] = tentative_g_score
+                f_score = tentative_g_score + heuristic(next_coordinate, problem.target_coordinate)
+                next_node = Node(next_coordinate, current_node, action, tentative_g_score)
+                heapq.heappush(node_queue, (f_score, -next_coordinate[0], -next_coordinate[1], next_node))
                 
     # return None if no solution 
     return Solution([], visit_count_grid, first_visit_grid, last_visit_grid)
@@ -473,8 +441,8 @@ def main():
     args = parser.parse_args()
 
     # Read the map file and create the Problem instance
-    # problem = read_map(args.map)
-    problem = read_map("sample.txt")
+    problem = read_map(args.map)
+    # problem = read_map("sample.txt")
     if problem is None:
         print("Error reading map file.")
         sys.exit(1)
@@ -498,7 +466,7 @@ def main():
         sys.exit(1)
 
     # MUST BE ABLE TO HANDLE WHEN NO SOLUTION IS FOUND
-    print("Total cost: ", calculate_path_cost(problem, solution.path)) # FOR CURIOUSITY PURPOSES
+    # print("Total cost: ", calculate_path_cost(problem, solution.path)) # FOR CURIOUSITY PURPOSES
     if args.mode == "debug":
         formatted_solution, visit_count_grid, first_visit, last_visit = format_debug_output(problem, solution)
         print("path:")
@@ -519,7 +487,7 @@ def main():
     else:
         formatted_solution = format_release_output(problem, solution)
         if formatted_solution == "no solution":
-            print("no solution")
+            print("null")
         else:
             for row in formatted_solution:
                 print(" ".join(row))
