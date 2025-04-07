@@ -15,7 +15,7 @@ import heapq
 
 class Solution:
     def __init__(self, path, visit_count_grid, first_visit, last_visit):
-        self.path = path # list of actions ex: ['up', 'down', 'left', 'right']
+        self.path = path 
         self.visit_count_grid = visit_count_grid # same as input grid but with number of visits
         self.first_visit = first_visit # same as input grid but with turn of first visit
         self.last_visit = last_visit # same as input grid but with turn of last visit
