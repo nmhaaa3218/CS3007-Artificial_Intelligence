@@ -5,6 +5,11 @@ import argparse
 from console import FlappyBirdEnv
 from collections import deque
 import torch
+import random
+
+random.seed(42)
+np.random.seed(42)
+torch.manual_seed(42)
 
 STUDENT_ID = 'a1840406'
 DEGREE = 'UG'  # or 'PG'
@@ -20,17 +25,18 @@ class MyAgent:
             self.mode = mode
 
         # modify these
-        self.storage = deque(maxlen=10000)  # a data structure of your choice (D in the Algorithm 2)
+        self.storage = deque(maxlen=20000)  # a data structure of your choice (D in the Algorithm 2)
         # A neural network MLP model which can be used as Q
         hidden_lay = (100, 250, 100, 50, 25)
-        self.network = MLPRegression(input_dim=9, output_dim=2, hidden_dim=hidden_lay, learning_rate=0.001)
+        # hidden_lay = (50, 125, 50, 25, 10)
+        self.network = MLPRegression(input_dim=9, output_dim=2, hidden_dim=hidden_lay, learning_rate=0.0007)
         # network2 has identical structure to network1, network2 is the Q_f
-        self.network2 = MLPRegression(input_dim=9, output_dim=2, hidden_dim=hidden_lay, learning_rate=0.001)
+        self.network2 = MLPRegression(input_dim=9, output_dim=2, hidden_dim=hidden_lay, learning_rate=0.0007)
         # initialise Q_f's parameter by Q's, here is an example
         MyAgent.update_network_model(net_to_update=self.network2, net_as_source=self.network)
 
-        self.epsilon = 1  # probability ε in Algorithm 2
-        self.n = 100  # the number of samples you'd want to draw from the storage each time
+        self.epsilon = 0.5  # probability ε in Algorithm 2
+        self.n = 64  # the number of samples you'd want to draw from the storage each time
         self.discount_factor = 0.99  # γ in Algorithm 2
 
         # do not modify this
@@ -229,22 +235,63 @@ class MyAgent:
         ], dtype=torch.float32)
         
         return normalized_state_tensor
+    
+    # def BUILD_STATE(self, state: dict) -> torch.Tensor:
+    #     # Extract bird parameters
+    #     bird_x = state['bird_x']
+    #     bird_y = state['bird_y']
+    #     bird_width = state['bird_width']
+    #     bird_height = state['bird_height']
+    #     bird_velocity = state['bird_velocity']
+        
+    #     # Find the first pipe that is ahead of the bird
+    #     upcoming_pipe = None
+    #     for pipe in state['pipes']:
+    #         if pipe['x'] + pipe['width'] > state['bird_x']:
+    #             upcoming_pipe = pipe
+    #             break
+        
+    #     if upcoming_pipe:
+    #         pipe_distance = upcoming_pipe['x'] - state['bird_x']
+    #         pipe_top = upcoming_pipe['top'] - state['bird_y']
+    #         pipe_bottom = upcoming_pipe['bottom'] - state['bird_y']
+    #         pipe_width = upcoming_pipe['width']
+    #     else:
+    #         # if no pipe is found, use defaults based on screen boundaries
+    #         pipe_distance = state['screen_width'] - state['bird_x']
+    #         pipe_top = - state['bird_y']
+    #         pipe_bottom = state['screen_height'] - state['bird_y']
+    #         pipe_width = 0.0
+
+    #     # Build the final raw state tensor
+    #     state_tensor = torch.tensor([
+    #         bird_x,
+    #         bird_y,
+    #         bird_width,
+    #         bird_height,
+    #         bird_velocity,
+    #         pipe_distance,
+    #         pipe_top,
+    #         pipe_bottom,
+    #         pipe_width,
+    #     ], dtype=torch.float32)
+        
+    #     return state_tensor
 
     def REWARD(self, state: dict) -> float:
         """
         +0.1 for staying alive
         +1.0 for passing a pipe
-        +0.5 for barely passing a pipe
+        + adaptive reward for barely passing a pipe
         -1.0 for dying
+        - offset for the gap center
         """
-        # if dead return -1
         if state['done']:
             return -1.0
 
-        # reward for staying alive.
-        reward = 0.1
+        reward = 0.1  # base reward for staying alive
 
-        # Find the first pipe that the bird has not yet passed.
+        # Find the first pipe that the bird has not yet passed
         next_pipe = None
         for pipe in state['pipes']:
             if pipe['x'] + pipe['width'] > state['bird_x']:
@@ -255,17 +302,20 @@ class MyAgent:
             pipe_right_edge = next_pipe['x'] + next_pipe['width']
             bird_right_edge = state['bird_x'] + state['bird_width']
             
-            # if pass, reward +1
+            # Increase reward for passing a pipe
             if pipe_right_edge < state['bird_x']:
-                reward += 1.0
-            # if barely pass, reward +0.5
-            elif abs(pipe_right_edge - bird_right_edge) < 5:
-                reward += 0.5
+                reward += 1.0  
+            
+            # Add reward for getting closer to the pipe
+            distance_to_pipe = next_pipe['x'] - state['bird_x']
+            if distance_to_pipe > 0:
+                reward += 0.1 * (1.0 / (1.0 + distance_to_pipe/100)) 
 
-            # Compute the center of the gap.
+            # Reward for being in a good vertical position
             gap_center = (next_pipe['top'] + next_pipe['bottom']) / 2.0
-            # reward based on the distance to the gap center
-            reward -= abs(state['bird_y'] - gap_center) / state['screen_height']
+            vertical_distance = abs(state['bird_y'] - gap_center)
+            if vertical_distance < 50:  # If bird is close to gap center
+                reward += 0.2 * (1.0 - vertical_distance/50)
 
         return reward
 
@@ -273,16 +323,18 @@ class MyAgent:
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--level', type=int, default=5)
+    parser.add_argument('--level', type=int, default=7)
 
     args = parser.parse_args()
 
     # bare-bone code to train your agent (you may extend this part as well, we won't run your agent training code)
     best_score = 0
     best_mileage = 0
-    env = FlappyBirdEnv(config_file_path='config.yml', show_screen=False, level=args.level, game_length=10000)
+    best_score_episode = 0
+    env = FlappyBirdEnv(config_file_path='config.yml', show_screen=False, level=args.level, game_length=50)
     agent = MyAgent(show_screen=False)
-    episodes = 3000
+    agent.network.load_model(path='my_model.ckpt')
+    episodes = 1000
     for episode in range(episodes):
         env.play(player=agent)        
 
@@ -294,24 +346,31 @@ if __name__ == '__main__':
         if env.score > best_score or env.mileage > best_mileage:
             best_mileage = env.mileage
             best_score = env.score
+            best_score_episode = episode
             print('NEW BEST')
             # save the model
-            agent.save_model(path='my_model.ckpt')  
+            agent.save_model(path='my_model.ckpt')
+            # update model
+            agent.update_network_model(net_to_update=agent.network2, net_as_source=agent.network)
 
         # UPDATE TOO FAST MAKE IT BAD
         # you'd want to clear the memory after one or a few episodes
-        if episode % 20 == 0:
+        if episode % 100 == 0:
             agent.storage.clear()   
 
         # you'd want to update the fixed Q-target network (Q_f) with Q's model parameter after one or a few episodes
-        if episode % 10 == 0:
+        if episode % 200 == 0:
             agent.update_network_model(net_to_update=agent.network2, net_as_source=agent.network)
 
-    # the below resembles how we evaluate your agent
-    # env2 = FlappyBirdEnv(config_file_path='config.yml', show_screen=True, level=args.level)
-    # agent2 = MyAgent(show_screen=True, load_model_path='my_model.ckpt', mode='eval')
+    print("Max score: ", best_score)
+    print("Max mileage: ", best_mileage)
+    print("Best score episode: ", best_score_episode)
 
-    # episodes = 1
+    # the below resembles how we evaluate your agent
+    # env2 = FlappyBirdEnv(config_file_path='config.yml', show_screen=False, level=args.level)
+    # agent2 = MyAgent(show_screen=False, load_model_path='my_model.ckpt', mode='eval')
+
+    # episodes = 10
     # scores = list()
     # for episode in range(episodes):
     #     env2.play(player=agent2)
@@ -319,3 +378,4 @@ if __name__ == '__main__':
 
     # print(np.max(scores))
     # print(np.mean(scores))
+    # print(np.median(scores))
