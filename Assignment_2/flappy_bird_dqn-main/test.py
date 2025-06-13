@@ -20,7 +20,7 @@ class MyAgent:
             self.mode = mode
 
         # modify these
-        self.storage = deque(maxlen=20000)  # a data structure of your choice (D in the Algorithm 2)
+        self.storage = deque(maxlen=10000)  # a data structure of your choice (D in the Algorithm 2)
         # A neural network MLP model which can be used as Q
         hidden_lay = (100, 250, 100, 50, 25)
         # hidden_lay = (200, 500, 100)
@@ -31,7 +31,7 @@ class MyAgent:
         MyAgent.update_network_model(net_to_update=self.network2, net_as_source=self.network)
 
         self.epsilon = 1  # probability ε in Algorithm 2
-        self.n = 128  # the number of samples you'd want to draw from the storage each time
+        self.n = 64  # the number of samples you'd want to draw from the storage each time
         self.discount_factor = 0.99  # γ in Algorithm 2
         self.previous_score = 0
 
@@ -358,76 +358,78 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # bare-bone code to train your agent (you may extend this part as well, we won't run your agent training code)
-    best_score = 0
-    best_mileage = 0
-    best_score_episode = 0
-    total_episodes = 10000
+    # best_score = 0
+    # best_mileage = 0
+    # best_score_episode = 0
+    # total_episodes = 10000
 
-    # Initialize the agent once to be used across all levels
-    agent = MyAgent(show_screen=False)
+    # # Initialize the agent once to be used across all levels
+    # agent = MyAgent(show_screen=False)
 
-    # Define the training schedule
-    training_schedule = [
-        # (5, 2000),  # Train 2000 episodes on level 5
-        (6, 3000),  # Train 3000 episodes on level 6
-        (7, 5000)   # Train 5000 episodes on level 7
-    ]
+    # # Define the training schedule
+    # training_schedule = [
+    #     # (5, 2000),  # Train 2000 episodes on level 5
+    #     (6, 3000),  # Train 3000 episodes on level 6
+    #     (7, 5000)   # Train 5000 episodes on level 7
+    # ]
 
-    current_episode = 0
+    # current_episode = 0
 
-    for level, episodes in training_schedule:
-        env = FlappyBirdEnv(config_file_path='config.yml', show_screen=False, level=level, game_length=50)
+    # for level, episodes in training_schedule:
+    #     env = FlappyBirdEnv(config_file_path='config.yml', show_screen=False, level=level, game_length=50)
 
-        # Initialize best score and mileage for each level
-        best_score = 0
-        best_mileage = 0
+    #     # Initialize best score and mileage for each level
+    #     best_score = 0
+    #     best_mileage = 0
 
-        for episode in range(episodes):
-            env.play(player=agent)
+    #     for episode in range(episodes):
+    #         env.play(player=agent)
 
-            print("--Episode {}--".format(current_episode))
-            print(env.score)
-            print(env.mileage)
-            print("Current level best score: ", best_score)
-            print("Current level best mileage: ", best_mileage)
-            print("Current level best score episode: ", best_score_episode)
+    #         print("--Episode {}--".format(current_episode))
+    #         print(env.score)
+    #         print(env.mileage)
+    #         print("Current level best score: ", best_score)
+    #         print("Current level best mileage: ", best_mileage)
+    #         print("Current level best score episode: ", best_score_episode)
 
-            # store the best model based on your judgement for each level
-            if env.score > best_score or env.mileage > best_mileage:
-                best_mileage = env.mileage
-                best_score = env.score
-                best_score_episode = current_episode
-                print('NEW BEST')
-                # save the model
-                agent.save_model(path='my_model.ckpt')
+    #         # store the best model based on your judgement for each level
+    #         if env.score > best_score or env.mileage > best_mileage:
+    #             best_mileage = env.mileage
+    #             best_score = env.score
+    #             best_score_episode = current_episode
+    #             print('NEW BEST')
+    #             # save the model
+    #             agent.save_model(path='my_model.ckpt')
 
-            # rely on deque to clear the memory
-            if current_episode % 1000 == 0 and len(agent.storage) > agent.n:
-                purge = len(agent.storage) // 3
-                for _ in range(purge):
-                    agent.storage.popleft()
-                print(f"Cleared {purge} oldest records")
+    #         # rely on deque to clear the memory
+    #         if current_episode % 1000 == 0 and len(agent.storage) > agent.n:
+    #             purge = len(agent.storage) // 3
+    #             for _ in range(purge):
+    #                 agent.storage.popleft()
+    #             print(f"Cleared {purge} oldest records")
 
-            # you'd want to update the fixed Q-target network (Q_f) with Q's model parameter after one or a few episodes
-            if current_episode % 100 == 0:
-                agent.update_network_model(net_to_update=agent.network2, net_as_source=agent.network)
+    #         # you'd want to update the fixed Q-target network (Q_f) with Q's model parameter after one or a few episodes
+    #         if current_episode % 100 == 0:
+    #             agent.update_network_model(net_to_update=agent.network2, net_as_source=agent.network)
 
-            current_episode += 1
+    #         current_episode += 1
 
-    print("Max score: ", best_score)
-    print("Max mileage: ", best_mileage)
-    print("Best score episode: ", best_score_episode)
+    # print("Max score: ", best_score)
+    # print("Max mileage: ", best_mileage)
+    # print("Best score episode: ", best_score_episode)
 
     # the below resembles how we evaluate your agent
-    # env2 = FlappyBirdEnv(config_file_path='config.yml', show_screen=False, level=args.level)
-    # agent2 = MyAgent(show_screen=False, load_model_path='my_model.ckpt', mode='eval')
+    env2 = FlappyBirdEnv(config_file_path='config.yml', show_screen=False, level=args.level)
+    agent2 = MyAgent(show_screen=False, load_model_path='my_model.ckpt', mode='eval')
+    agent2.network.global_prune_neurons(amount=0.1)
+    agent2.save_model(path='my_model_pruned.ckpt')
 
-    # episodes = 10
-    # scores = list()
-    # for episode in range(episodes):
-    #     env2.play(player=agent2)
-    #     scores.append(env2.score)
+    episodes = 30
+    scores = list()
+    for episode in range(episodes):
+        env2.play(player=agent2)
+        scores.append(env2.score)
 
-    # print(np.max(scores))
-    # print(np.mean(scores))
-    # print(np.median(scores))
+    print("Max score: ", np.max(scores))
+    print("Mean score: ", np.mean(scores))
+    print("Median score: ", np.median(scores))

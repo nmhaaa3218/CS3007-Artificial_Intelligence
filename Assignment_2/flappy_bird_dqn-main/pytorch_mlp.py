@@ -12,6 +12,8 @@ from torch import nn
 from torch import optim
 import torch
 from typing import List
+import torch.nn.utils.prune as prune
+
 
 
 class MLPRegression(nn.Module):
@@ -99,10 +101,47 @@ class MLPRegression(nn.Module):
         return y_pred.numpy()
 
     def save_model(self, path: str = None):
+        self.remove_all_pruning()
         torch.save(self.net.state_dict(), path)
 
     def load_model(self, path: str = None):
         self.net.load_state_dict(torch.load(path, weights_only=True))
+        
+    def prune_neurons_by_l1(self, layer_idx: int, amount: float):
+        """
+        Structured L1-norm pruning on output neurons of a given linear layer.
+        Args:
+            layer_idx: Index of the nn.Linear layer in self.net to prune (0-based, counting only Linear layers).
+            amount: Fraction of neurons to prune (0 < amount < 1).
+        """
+        # Locate the Linear layer
+        linear_layers = [m for m in self.net if isinstance(m, nn.Linear)]
+        if layer_idx < 0 or layer_idx >= len(linear_layers):
+            raise IndexError(f"Layer index {layer_idx} out of range. Only {len(linear_layers)} linear layers available.")
+        layer = linear_layers[layer_idx]
+        # Prune entire output neurons (rows) by L1-norm
+        prune.ln_structured(layer, name='weight', amount=amount, n=1, dim=0)
+
+    def global_prune_neurons(self, amount: float):
+        """
+        Apply structured L1-norm pruning to all Linear layers in the network,
+        removing the lowest-importance output neurons.
+        Args:
+            amount: Fraction of neurons to prune per layer (0 < amount < 1).
+        """
+        for layer in self.net:
+            if isinstance(layer, nn.Linear):
+                prune.ln_structured(layer, name='weight', amount=amount, n=1, dim=0)
+
+    def remove_all_pruning(self):
+        """
+        Remove pruning reparameterization from all pruned layers,
+        making the masks permanent in the weight tensors.
+        """
+        for layer in self.net:
+            if isinstance(layer, nn.Linear) and hasattr(layer, 'weight_orig'):
+                prune.remove(layer, 'weight')
+
 
 
 if __name__ == '__main__':
